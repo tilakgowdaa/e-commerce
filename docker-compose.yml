@@ -9,10 +9,16 @@ services:
     volumes:
       - postgres:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "5432:5432"
     networks:
       microserices-net:
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "tilak" ]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 10s
 
 
   pgadmin:
@@ -100,6 +106,55 @@ services:
     networks:
       microserices-net:
 
+  config-server:
+    container_name: config-container
+    image: config-server
+    ports:
+      - 8888:8888
+    networks:
+      microserices-net:
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8888/application/default" ]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 10s
+
+
+  product:
+    container_name: product-container
+    image: product
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - 8050:8050
+    environment:
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888/
+      - SPRING_DATASOURCE_URL= jdbc:postgresql://postgres:5432/product
+    networks:
+      microserices-net:
+
+  discovery:
+    container_name: discovery-container
+    image: discovery
+    depends_on:
+      config-server:
+        condition: service_healthy
+    ports:
+      - 8761:8761
+    networks:
+      microserices-net:
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8761/" ]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 10s
 
 networks:
   microserices-net:
